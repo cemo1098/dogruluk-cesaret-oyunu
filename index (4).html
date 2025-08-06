@@ -1,0 +1,502 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Doğruluk mu Cesaret mi Çarkı</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
+  <style>
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      background: linear-gradient(135deg, #74ebd5, #acb6e5);
+      font-family: 'Segoe UI', Arial, sans-serif;
+      color: #333;
+      transition: background 0.3s, color 0.3s;
+    }
+    body.dark {
+      background: linear-gradient(135deg, #1a1a2e, #162447);
+      color: #e0e0e0;
+    }
+    #gameContainer {
+      text-align: center;
+      background: white;
+      padding: 2vw;
+      border-radius: 15px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+      max-width: 90vw;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    body.dark #gameContainer {
+      background: #2a2a3a;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+    }
+    #canvasContainer {
+      margin: 2vw 0;
+      width: 100%;
+      max-width: 400px;
+      aspect-ratio: 1/1;
+    }
+    button {
+      padding: 1.5vh 3vw;
+      font-size: 3.5vw;
+      cursor: pointer;
+      background-color: #ff6f61;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      transition: background-color 0.3s;
+      margin: 1vw;
+      touch-action: manipulation;
+    }
+    button:hover {
+      background-color: #e55a50;
+    }
+    #passButton, #skipButton, #themeButton {
+      background-color: #6B728E;
+    }
+    #passButton:hover, #skipButton:hover, #themeButton:hover {
+      background-color: #5a6079;
+    }
+    body.dark button {
+      color: #e0e0e0;
+    }
+    #result {
+      margin: 2vh 0;
+      font-size: 4vw;
+      font-weight: bold;
+      min-height: 12vw;
+    }
+    #history {
+      margin-top: 2vh;
+      max-height: 30vh;
+      overflow-y: auto;
+      font-size: 3.5vw;
+      background: #f9f9f9;
+      padding: 2vw;
+      border-radius: 8px;
+    }
+    body.dark #history {
+      background: #3a3a4a;
+    }
+    #scoreboard {
+      margin-top: 2vh;
+      font-size: 3.5vw;
+      background: #f9f9f9;
+      padding: 2vw;
+      border-radius: 8px;
+      max-height: 30vh;
+      overflow-y: auto;
+    }
+    body.dark #scoreboard {
+      background: #3a3a4a;
+    }
+    #taskInput, #playerInput, #turnInput {
+      padding: 1.5vh;
+      margin: 1vw;
+      width: 80%;
+      max-width: 300px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      font-size: 3.5vw;
+    }
+    body.dark #taskInput, body.dark #playerInput, body.dark #turnInput {
+      background: #3a3a4a;
+      color: #e0e0e0;
+      border-color: #555;
+    }
+    #turnInfo {
+      font-size: 3.5vw;
+      margin: 2vw 0;
+    }
+    #gameOver {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      color: #e0e0e0;
+      text-align: center;
+      padding-top: 20vh;
+      font-size: 5vw;
+    }
+    #gameOver h2 {
+      color: #ff6f61;
+      font-size: 8vw;
+    }
+    #gameOver p {
+      font-size: 5vw;
+    }
+    @media (max-width: 600px) {
+      #gameContainer {
+        padding: 3vw;
+      }
+      button {
+        font-size: 4.5vw;
+        padding: 2vh 4vw;
+      }
+      #result {
+        font-size: 5vw;
+      }
+      #history, #scoreboard, #turnInfo, #taskInput, #playerInput, #turnInput {
+        font-size: 4.5vw;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="gameContainer">
+    <h1>Doğruluk mu Cesaret mi Çarkı</h1>
+    <div id="turnInfo">Tur: 0 / 0 | Sıra: Oyuncu Seçilmedi</div>
+    <div id="canvasContainer"></div>
+    <button onclick="spinWheel()">Çarkı Çevir</button>
+    <button onclick="addPlayer()">Oyuncu Ekle</button>
+    <button onclick="setTurns()">Tur Sayısını Belirle</button>
+    <button onclick="endGame()">Oyunu Bitir</button>
+    <button id="themeButton" onclick="toggleTheme()">Koyu Tema</button>
+    <div id="result">Çarkı çevirmek için butona tıklayın!</div>
+    <input id="playerInput" type="text" placeholder="Oyuncu adını girin">
+    <input id="turnInput" type="number" placeholder="Tur sayısı (3-15)" min="3" max="15">
+    <div id="initialChoiceButtons" style="display: none;">
+      <button id="passButton" onclick="passTurn()">Pas</button>
+      <button onclick="chooseTask('Doğruluk')">Doğruluk</button>
+      <button onclick="chooseTask('Cesaret')">Cesaret</button>
+    </div>
+    <div id="taskChoiceButtons" style="display: none;"></div>
+    <div id="scoreboard">
+      <strong>Skor Tablosu:</strong><br>
+      Henüz oyuncu eklenmedi.
+    </div>
+    <div id="history">
+      <strong>Oyun Geçmişi:</strong><br>
+    </div>
+  </div>
+  <div id="gameOver">
+    <h2>Oyun Bitti!</h2>
+    <p id="winnerText"></p>
+    <p id="loserText"></p>
+    <button onclick="restartGame()">Anasayfaya Dön</button>
+  </div>
+  <script>
+    let angle = 0;
+    let spinSpeed = 0;
+    let spinning = false;
+    let players = [];
+    let currentPlayerIndex = -1;
+    let lastPlayerIndex = -1;
+    let selectedPlayer = null;
+    let totalTurns = 0;
+    let currentTurn = 0;
+    let isDarkTheme = false;
+    let tasks = {
+      Doğruluk: [
+        { text: "En utanç verici anını anlat.", points: 10 },
+        { text: "Gizlice kimi beğeniyorsun?", points: 5 },
+        { text: "En büyük sırrın nedir?", points: 15 }
+      ],
+      Cesaret: [
+        { text: "Bir şarkıyı yüksek sesle söyle.", points: 10 },
+        { text: "Komik bir dans yap.", points: 15 },
+        { text: "Bir arkadaşını taklit et.", points: 5 }
+      ]
+    };
+    let history = [];
+    let penalties = [
+      "Bir dakikalık komik bir stand-up gösterisi yap!",
+      "Herkese bir fıkra anlat!",
+      "Bir hayvan taklidi yap!",
+      "En sevdiğin şarkıyı detone söyle!",
+      "Bir dakikalık doğaçlama dans gösterisi yap!"
+    ];
+
+    function setup() {
+      let canvas = createCanvas(Math.min(windowWidth * 0.8, 400), Math.min(windowWidth * 0.8, 400));
+      canvas.parent('canvasContainer');
+      angleMode(DEGREES);
+      textAlign(CENTER, CENTER);
+    }
+
+    function windowResized() {
+      resizeCanvas(Math.min(windowWidth * 0.8, 400), Math.min(windowWidth * 0.8, 400));
+    }
+
+    function draw() {
+      background(isDarkTheme ? '#2a2a3a' : 255);
+      translate(width / 2, height / 2);
+      rotate(angle);
+
+      for (let i = 0; i < players.length; i++) {
+        let segmentAngle = 360 / players.length;
+        fill(i % 2 === 0 ? (isDarkTheme ? '#cc4b3f' : '#FF6F61') : (isDarkTheme ? '#4a506e' : '#6B728E'));
+        arc(0, 0, width * 0.9, width * 0.9, i * segmentAngle, (i + 1) * segmentAngle, PIE);
+        push();
+        rotate(i * segmentAngle + segmentAngle / 2);
+        fill(255);
+        textSize(width * 0.035);
+        text(players[i].name, width * 0.3, 0);
+        pop();
+      }
+
+      if (spinning) {
+        angle += spinSpeed;
+        spinSpeed *= 0.98;
+        if (spinSpeed < 0.1) {
+          spinning = false;
+          spinSpeed = 0;
+          checkPlayerResult();
+        }
+      }
+
+      push();
+      resetMatrix();
+      translate(width / 2, height / 2 - width * 0.45);
+      fill(isDarkTheme ? '#e0e0e0' : 0);
+      triangle(-width * 0.04, 0, width * 0.04, 0, 0, width * 0.06);
+      pop();
+    }
+
+    function spinWheel() {
+      if (!spinning && players.length > 1 && totalTurns > 0 && currentTurn < totalTurns) {
+        spinning = true;
+        spinSpeed = random(15, 25);
+        document.getElementById('initialChoiceButtons').style.display = 'none';
+        document.getElementById('taskChoiceButtons').style.display = 'none';
+      } else if (players.length <= 1) {
+        document.getElementById('result').innerText = "En az iki oyuncu ekleyin!";
+      } else if (totalTurns === 0) {
+        document.getElementById('result').innerText = "Önce tur sayısını belirleyin!";
+      } else if (currentTurn >= totalTurns) {
+        document.getElementById('result').innerText = "Tur sayısı doldu, oyunu bitirin!";
+        endGame();
+      }
+    }
+
+    function checkPlayerResult() {
+      let segmentAngle = 360 / players.length;
+      let normalizedAngle = (angle % 360 + 360) % 360;
+      let index = floor(normalizedAngle / segmentAngle) % players.length;
+      
+      if (index === lastPlayerIndex && players.length > 1) {
+        document.getElementById('result').innerText = `${players[index].name} tekrar seçildi, çark otomatik dönüyor...`;
+        spinning = true;
+        spinSpeed = random(15, 25);
+        return;
+      }
+
+      selectedPlayer = players[index];
+      currentPlayerIndex = index;
+      lastPlayerIndex = index;
+      document.getElementById('result').innerText = `${selectedPlayer.name}, pas geçmek ister misin? (Kalan pas hakkı: ${selectedPlayer.passes})`;
+      document.getElementById('initialChoiceButtons').style.display = 'block';
+      document.getElementById('passButton').disabled = selectedPlayer.passes <= 0;
+      document.getElementById('turnInfo').innerText = `Tur: ${currentTurn + 1} / ${totalTurns} | Sıra: ${selectedPlayer.name} (Puan: ${selectedPlayer.score})`;
+      updateScoreboard();
+    }
+
+    function passTurn() {
+      if (selectedPlayer && selectedPlayer.passes > 0) {
+        selectedPlayer.passes--;
+        selectedPlayer.score -= 5;
+        let historyEntry = `${selectedPlayer.name}: Pas geçti (-5 puan, kalan pas: ${selectedPlayer.passes})`;
+        history.push(historyEntry);
+        updateHistory();
+        currentTurn++;
+        document.getElementById('result').innerText = `${selectedPlayer.name} pas geçti! (-5 puan)`;
+        document.getElementById('initialChoiceButtons').style.display = 'none';
+        document.getElementById('turnInfo').innerText = `Tur: ${currentTurn} / ${totalTurns} | Sıra: ${selectedPlayer.name} (Puan: ${selectedPlayer.score})`;
+        updateScoreboard();
+        selectedPlayer = null;
+        if (currentTurn >= totalTurns) {
+          endGame();
+        }
+      }
+    }
+
+    function chooseTask(type) {
+      if (selectedPlayer) {
+        let taskList = tasks[type];
+        let task = taskList[Math.floor(Math.random() * taskList.length)];
+        let resultText = `${type}: ${task.text} (${task.points} puan)`;
+        document.getElementById('result').innerText = resultText;
+        document.getElementById('initialChoiceButtons').style.display = 'none';
+        document.getElementById('taskChoiceButtons').style.display = 'block';
+        document.getElementById('taskChoiceButtons').innerHTML = `
+          <button onclick="confirmTask('${type}', ${task.points})">Tamamla</button>
+          <button id="skipButton" onclick="skipTask()" ${selectedPlayer.skips <= 0 ? 'disabled' : ''}>Yapmıyorum</button>
+        `;
+      }
+    }
+
+    function confirmTask(type, points) {
+      if (selectedPlayer) {
+        selectedPlayer.score += points;
+        let taskList = tasks[type];
+        let task = taskList[Math.floor(Math.random() * taskList.length)];
+        let historyEntry = `${selectedPlayer.name}: ${type} - ${task.text} (${points} puan)`;
+        history.push(historyEntry);
+        updateHistory();
+        currentTurn++;
+        document.getElementById('result').innerText = `${selectedPlayer.name}, görevi tamamladı! (${points} puan)`;
+        document.getElementById('taskChoiceButtons').style.display = 'none';
+        document.getElementById('turnInfo').innerText = `Tur: ${currentTurn} / ${totalTurns} | Sıra: ${selectedPlayer.name} (Puan: ${selectedPlayer.score})`;
+        updateScoreboard();
+        selectedPlayer = null;
+        if (currentTurn >= totalTurns) {
+          endGame();
+        }
+      }
+    }
+
+    function skipTask() {
+      if (selectedPlayer && selectedPlayer.skips > 0) {
+        selectedPlayer.skips--;
+        selectedPlayer.score -= 5;
+        let historyEntry = `${selectedPlayer.name}: Yapmıyorum (-5 puan, kalan yapmıyorum hakkı: ${selectedPlayer.skips})`;
+        history.push(historyEntry);
+        updateHistory();
+        currentTurn++;
+        document.getElementById('result').innerText = `${selectedPlayer.name} görevi yapmadı! (-5 puan)`;
+        document.getElementById('taskChoiceButtons').style.display = 'none';
+        document.getElementById('turnInfo').innerText = `Tur: ${currentTurn} / ${totalTurns} | Sıra: ${selectedPlayer.name} (Puan: ${selectedPlayer.score})`;
+        updateScoreboard();
+        selectedPlayer = null;
+        if (currentTurn >= totalTurns) {
+          endGame();
+        }
+      }
+    }
+
+    function addPlayer() {
+      let playerName = document.getElementById('playerInput').value.trim();
+      if (playerName) {
+        players.push({ name: playerName, score: 0, passes: 3, skips: 3 });
+        document.getElementById('playerInput').value = '';
+        document.getElementById('result').innerText = `Oyuncu "${playerName}" eklendi! (3 pas, 3 yapmıyorum hakkı)`;
+        updateScoreboard();
+      }
+    }
+
+    function setTurns() {
+      let turnInput = parseInt(document.getElementById('turnInput').value);
+      if (turnInput >= 3 && turnInput <= 15) {
+        totalTurns = turnInput;
+        currentTurn = 0;
+        document.getElementById('turnInfo').innerText = `Tur: ${currentTurn} / ${totalTurns} | Sıra: Oyuncu Seçilmedi`;
+        document.getElementById('result').innerText = "Çarkı çevirmek için hazır!";
+      } else {
+        document.getElementById('result').innerText = "Tur sayısı 3 ile 15 arasında olmalı!";
+      }
+    }
+
+    function updateHistory() {
+      let historyDiv = document.getElementById('history');
+      historyDiv.innerHTML = '<strong>Oyun Geçmişi:</strong><br>' + history.join('<br>');
+      historyDiv.scrollTop = historyDiv.scrollHeight;
+    }
+
+    function updateScoreboard() {
+      let scoreboardDiv = document.getElementById('scoreboard');
+      if (players.length === 0) {
+        scoreboardDiv.innerHTML = '<strong>Skor Tablosu:</strong><br>Henüz oyuncu eklenmedi.';
+      } else {
+        let sortedPlayers = [...players].sort((a, b) => b.score - a.score);
+        let scoreboardHTML = '<strong>Skor Tablosu:</strong><br>';
+        sortedPlayers.forEach(player => {
+          scoreboardHTML += `${player.name}: ${player.score} puan<br>`;
+        });
+        scoreboardDiv.innerHTML = scoreboardHTML;
+      }
+    }
+
+    function endGame() {
+      if (players.length === 0) {
+        document.getElementById('result').innerText = "Oyun bitirilemez, önce oyuncu ekleyin!";
+        return;
+      }
+      if (totalTurns === 0) {
+        document.getElementById('result').innerText = "Oyun bitirilemez, önce tur sayısını belirleyin!";
+        return;
+      }
+      let sortedPlayers = [...players].sort((a, b) => b.score - a.score);
+      let winner = sortedPlayers[0];
+      let loser = sortedPlayers[sortedPlayers.length - 1];
+      let penalty = penalties[Math.floor(Math.random() * penalties.length)];
+      document.getElementById('winnerText').innerText = `Kazanan: ${winner.name} (${winner.score} puan)! 🎉 Tebrikler, şampiyon!`;
+      document.getElementById('loserText').innerText = `Kaybeden: ${loser.name} (${loser.score} puan). Ceza: ${penalty} 😜`;
+      document.getElementById('gameOver').style.display = 'block';
+      document.getElementById('gameContainer').style.display = 'none';
+    }
+
+    function restartGame() {
+      players = [];
+      currentPlayerIndex = -1;
+      lastPlayerIndex = -1;
+      selectedPlayer = null;
+      totalTurns = 0;
+      currentTurn = 0;
+      history = [];
+      document.getElementById('gameOver').style.display = 'none';
+      document.getElementById('gameContainer').style.display = 'block';
+      document.getElementById('result').innerText = "Çarkı çevirmek için butona tıklayın!";
+      document.getElementById('turnInfo').innerText = "Tur: 0 / 0 | Sıra: Oyuncu Seçilmedi";
+      document.getElementById('history').innerHTML = '<strong>Oyun Geçmişi:</strong><br>';
+      document.getElementById('scoreboard').innerHTML = '<strong>Skor Tablosu:</strong><br>Henüz oyuncu eklenmedi.';
+      document.getElementById('initialChoiceButtons').style.display = 'none';
+      document.getElementById('taskChoiceButtons').style.display = 'none';
+    }
+
+    function toggleTheme() {
+      document.body.classList.toggle('dark');
+      isDarkTheme = document.body.classList.contains('dark');
+      let themeButton = document.getElementById('themeButton');
+      themeButton.innerText = isDarkTheme ? 'Açık Tema' : 'Koyu Tema';
+    }
+  </script>
+</body>
+</html>
